@@ -1,4 +1,7 @@
 ﻿. "$PSScriptRoot\..\src\Ranger-Telechargements.ps1"
+# Les tests utilisent toujours la table par défaut, même si un
+# categories.json personnalisé existe à côté du script.
+$Categories = Copy-Categories $CategoriesParDefaut
 
 Describe 'Get-Categorie' {
     It 'range une extension connue' { Get-Categorie -Extension '.pdf' | Should Be 'Documents' }
@@ -137,5 +140,39 @@ Describe 'Format-Resume' {
     It 'signale les erreurs' {
         $r = [pscustomobject]@{ Comptes = @{ Images = 1 }; Erreurs = @('a.pdf : verrouillé') }
         Format-Resume -Resultat $r | Should Be "1 fichier(s) rangé(s) : 1 Images`r`n1 fichier(s) non déplacé(s), voir rangement.log."
+    }
+}
+
+Describe 'Catégories' {
+    It 'lit un fichier valide en gardant l''ordre' {
+        Set-Content -LiteralPath 'TestDrive:\c1.json' -Encoding UTF8 -Value '{"Zeta":["z"],"Alpha":["a"]}'
+        $t = Read-Categories -Chemin 'TestDrive:\c1.json'
+        @($t.Keys) -join ',' | Should Be 'Zeta,Alpha'
+        Get-Categorie -Extension '.z' -Table $t | Should Be 'Zeta'
+    }
+    It 'reprend la table par défaut si le fichier manque' {
+        (Read-Categories -Chemin 'TestDrive:\absent.json')['Images'] -contains 'jpg' | Should Be $true
+    }
+    It 'reprend la table par défaut si le JSON est invalide' {
+        Set-Content -LiteralPath 'TestDrive:\c2.json' -Value '{ pas du json'
+        (Read-Categories -Chemin 'TestDrive:\c2.json')['Images'] -contains 'jpg' | Should Be $true
+    }
+    It 'normalise les extensions' {
+        $t = ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'Docs'; Extensions = ' .PDF , txt,,pdf' })
+        $t['Docs'] -join ',' | Should Be 'pdf,txt'
+    }
+    It 'refuse un dossier vide'       { { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = ' '; Extensions = 'a' }) } | Should Throw }
+    It 'refuse un caractère interdit' { { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'a/b'; Extensions = 'a' }) } | Should Throw }
+    It 'refuse Autres'                { { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'autres'; Extensions = 'a' }) } | Should Throw }
+    It 'refuse un dossier en double' {
+        { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'A'; Extensions = 'a' }, [pscustomobject]@{ Dossier = 'a'; Extensions = 'b' }) } | Should Throw
+    }
+    It 'refuse une extension dans deux dossiers' {
+        { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'A'; Extensions = 'x' }, [pscustomobject]@{ Dossier = 'B'; Extensions = 'X' }) } | Should Throw
+    }
+    It 'relit ce qui a été enregistré' {
+        $t = ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'Vidéos'; Extensions = 'mp4' })
+        Save-Categories -Chemin 'TestDrive:\c3.json' -Table $t
+        (Read-Categories -Chemin 'TestDrive:\c3.json')['Vidéos'] -join ',' | Should Be 'mp4'
     }
 }

@@ -1,9 +1,10 @@
 ﻿# Range les fichiers de la racine du dossier Téléchargements dans des
 # sous-dossiers par type. Ne supprime et n'écrase jamais rien.
 
+# Table par défaut, utilisée tant que categories.json n'existe pas.
 # Dossier de destination -> extensions (sans point, en minuscules).
-# Toute extension absente de cette table va dans 'Autres'.
-$Categories = [ordered]@{
+# Toute extension absente de la table va dans 'Autres'.
+$CategoriesParDefaut = [ordered]@{
     'Images'      = @('jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'heic', 'ico', 'tiff')
     'Vidéos'      = @('mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'flv', 'm4v')
     'Musique'     = @('mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma')
@@ -18,13 +19,84 @@ $ExtensionsEnCours = @('crdownload', 'part', 'tmp', 'partial', 'download')
 
 $NomJournal = 'rangement.log'
 
+function Copy-Categories {
+    param([System.Collections.IDictionary]$Table)
+
+    $copie = [ordered]@{}
+    foreach ($nom in $Table.Keys) { $copie[$nom] = @($Table[$nom]) }
+    return $copie
+}
+
+# Construit une table de catégories à partir de lignes { Dossier; Extensions },
+# où Extensions est une liste séparée par des virgules. Normalise les
+# extensions et lève une exception si les données sont invalides.
+function ConvertTo-TableCategories {
+    param([object[]]$Lignes)
+
+    $table = [ordered]@{}
+    $dossiers = @()
+    $proprietaires = @{}
+    $interdits = [IO.Path]::GetInvalidFileNameChars()
+
+    foreach ($ligne in $Lignes) {
+        $nom = "$($ligne.Dossier)".Trim()
+        if (-not $nom) { throw 'Un nom de dossier est vide.' }
+        if ($nom.IndexOfAny($interdits) -ge 0) { throw "Le nom de dossier « $nom » contient un caractère interdit." }
+        if ($nom -eq 'Autres') { throw '« Autres » est réservé aux extensions inconnues.' }
+        if ($dossiers -contains $nom) { throw "Le dossier « $nom » apparaît deux fois." }
+        $dossiers += $nom
+
+        $extensions = @()
+        foreach ($brut in "$($ligne.Extensions)".Split(',')) {
+            $ext = $brut.Trim().TrimStart('.').ToLowerInvariant()
+            if (-not $ext -or $extensions -contains $ext) { continue }
+            if ($proprietaires.ContainsKey($ext)) {
+                throw "L'extension « $ext » est à la fois dans « $($proprietaires[$ext]) » et « $nom »."
+            }
+            $proprietaires[$ext] = $nom
+            $extensions += $ext
+        }
+        $table[$nom] = $extensions
+    }
+    return $table
+}
+
+# Lit categories.json. Renvoie une copie de la table par défaut si le
+# fichier manque, n'est pas du JSON ou ne respecte pas les règles.
+function Read-Categories {
+    param([string]$Chemin)
+
+    try {
+        if (-not (Test-Path -LiteralPath $Chemin -PathType Leaf)) { throw 'absent' }
+        $json = Get-Content -LiteralPath $Chemin -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        $lignes = foreach ($p in $json.PSObject.Properties) {
+            [pscustomobject]@{ Dossier = $p.Name; Extensions = (@($p.Value) -join ',') }
+        }
+        return ConvertTo-TableCategories -Lignes @($lignes)
+    }
+    catch {
+        return Copy-Categories $CategoriesParDefaut
+    }
+}
+
+function Save-Categories {
+    param([string]$Chemin, [System.Collections.IDictionary]$Table)
+
+    $objet = [ordered]@{}
+    foreach ($nom in $Table.Keys) { $objet[$nom] = @($Table[$nom]) }
+    $objet | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $Chemin -Encoding UTF8 -ErrorAction Stop
+}
+
+$CheminCategories = Join-Path $PSScriptRoot 'categories.json'
+$Categories = Read-Categories -Chemin $CheminCategories
+
 function Get-Categorie {
-    param([string]$Extension)
+    param([string]$Extension, [System.Collections.IDictionary]$Table = $Categories)
 
     $ext = $Extension.TrimStart('.').ToLowerInvariant()
     if ($ext) {
-        foreach ($nom in $Categories.Keys) {
-            if ($Categories[$nom] -contains $ext) { return $nom }
+        foreach ($nom in $Table.Keys) {
+            if ($Table[$nom] -contains $ext) { return $nom }
         }
     }
     return 'Autres'
