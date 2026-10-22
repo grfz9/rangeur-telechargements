@@ -56,5 +56,43 @@ function Get-CheminLibre {
     return $chemin
 }
 
+# Déplace chaque fichier de la racine de Source dans son dossier de catégorie
+# et journalise chaque action. Les sous-dossiers ne sont pas parcourus.
+# Renvoie le nombre de fichiers rangés par catégorie et la liste des erreurs.
+function Invoke-Rangement {
+    param([string]$Source, [string]$Journal)
+
+    $racine = Convert-Path -LiteralPath $Source
+    if (-not $Journal) { $Journal = Join-Path $racine $NomJournal }
+
+    $comptes = @{}
+    $erreurs = New-Object System.Collections.Generic.List[string]
+
+    foreach ($fichier in Get-ChildItem -LiteralPath $racine -File -Force) {
+        if (Test-FichierAIgnorer -Fichier $fichier) { continue }
+
+        $categorie = Get-Categorie -Extension $fichier.Extension
+        $horodatage = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        try {
+            $dossier = Join-Path $racine $categorie
+            if (-not (Test-Path -LiteralPath $dossier -PathType Container)) {
+                New-Item -ItemType Directory -Path $dossier -ErrorAction Stop | Out-Null
+            }
+            $destination = Get-CheminLibre -Dossier $dossier -Nom $fichier.Name
+            Move-Item -LiteralPath $fichier.FullName -Destination $destination -ErrorAction Stop
+
+            $comptes[$categorie] = 1 + [int]$comptes[$categorie]
+            $nomFinal = Split-Path -Leaf $destination
+            Add-Content -LiteralPath $Journal -Encoding UTF8 -Value "$horodatage | déplacé | $($fichier.Name) -> $categorie\$nomFinal"
+        }
+        catch {
+            $erreurs.Add("$($fichier.Name) : $($_.Exception.Message)")
+            Add-Content -LiteralPath $Journal -Encoding UTF8 -Value "$horodatage | erreur | $($fichier.Name) | $($_.Exception.Message)"
+        }
+    }
+
+    return [pscustomobject]@{ Comptes = $comptes; Erreurs = $erreurs.ToArray() }
+}
+
 if ($MyInvocation.InvocationName -ne '.') {
 }
