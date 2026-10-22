@@ -108,3 +108,18 @@ Describe 'Invoke-Rangement' {
         $r.Erreurs.Count | Should Be 0
     }
 }
+
+Describe 'Format-Resume' {
+    It 'annonce un dossier propre' {
+        $r = [pscustomobject]@{ Comptes = @{}; Erreurs = @() }
+        Format-Resume -Resultat $r | Should Be 'Rien à ranger : le dossier Téléchargements est déjà propre.'
+    }
+    It 'liste les catégories dans l''ordre de la table' {
+        $r = [pscustomobject]@{ Comptes = @{ Documents = 2; Images = 3 }; Erreurs = @() }
+        Format-Resume -Resultat $r | Should Be '5 fichier(s) rangé(s) : 3 Images, 2 Documents'
+    }
+    It 'signale les erreurs' {
+        $r = [pscustomobject]@{ Comptes = @{ Images = 1 }; Erreurs = @('a.pdf : verrouillé') }
+        Format-Resume -Resultat $r | Should Be "1 fichier(s) rangé(s) : 1 Images`r`n1 fichier(s) non déplacé(s), voir rangement.log."
+    }
+}

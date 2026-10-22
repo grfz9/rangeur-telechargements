@@ -94,5 +94,42 @@ function Invoke-Rangement {
     return [pscustomobject]@{ Comptes = $comptes; Erreurs = $erreurs.ToArray() }
 }
 
+# Construit le texte affiché à l'utilisateur à partir du résultat de
+# Invoke-Rangement. Les catégories suivent l'ordre de la table.
+function Format-Resume {
+    param([pscustomobject]$Resultat)
+
+    $erreurs = @($Resultat.Erreurs).Count
+    $total = 0
+    $parties = @()
+    foreach ($nom in @($Categories.Keys) + 'Autres') {
+        $n = [int]$Resultat.Comptes[$nom]
+        if ($n -gt 0) {
+            $total += $n
+            $parties += "$n $nom"
+        }
+    }
+
+    if ($total -eq 0 -and $erreurs -eq 0) {
+        return 'Rien à ranger : le dossier Téléchargements est déjà propre.'
+    }
+
+    if ($total -eq 0) {
+        $texte = '0 fichier(s) rangé(s).'
+    }
+    else {
+        $texte = "$total fichier(s) rangé(s) : " + ($parties -join ', ')
+    }
+    if ($erreurs -gt 0) {
+        $texte += "`r`n$erreurs fichier(s) non déplacé(s), voir $NomJournal."
+    }
+    return $texte
+}
+
 if ($MyInvocation.InvocationName -ne '.') {
+    $telechargements = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
+    $resultat = Invoke-Rangement -Source $telechargements
+
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show((Format-Resume -Resultat $resultat), 'Rangeur de Téléchargements') | Out-Null
 }
