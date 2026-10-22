@@ -1,0 +1,48 @@
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Catégories"
+        Width="640" Height="460" MinWidth="460" MinHeight="320"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="#F4F5F7" FontFamily="Segoe UI" FontSize="13">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#C9CDD4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Margin="0,0,0,12" Foreground="#4B5563" TextWrapping="Wrap"
+                   Text="Un dossier par ligne, extensions séparées par des virgules. Les extensions absentes vont dans « Autres »."/>
+
+        <DataGrid x:Name="GrilleCategories" Grid.Row="1"
+                  AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                  SelectionMode="Single" HeadersVisibility="Column" RowHeaderWidth="0"
+                  Background="White" BorderBrush="#E1E4E8" GridLinesVisibility="Horizontal"
+                  HorizontalGridLinesBrush="#EEF0F3">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Dossier" Width="160"
+                                    Binding="{Binding Dossier, UpdateSourceTrigger=PropertyChanged}"/>
+                <DataGridTextColumn Header="Extensions" Width="*"
+                                    Binding="{Binding Extensions, UpdateSourceTrigger=PropertyChanged}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <DockPanel Grid.Row="2" Margin="0,14,0,0" LastChildFill="False">
+            <Button x:Name="BtnAjouter" Content="Ajouter une ligne" DockPanel.Dock="Left"/>
+            <Button x:Name="BtnSupprimer" Content="Supprimer la ligne" DockPanel.Dock="Left"/>
+            <Button x:Name="BtnFermer" Content="Fermer" DockPanel.Dock="Right" Margin="0"/>
+            <Button x:Name="BtnEnregistrer" Content="Enregistrer" DockPanel.Dock="Right" FontWeight="SemiBold"
+                    Background="#2563EB" Foreground="White" BorderBrush="#2563EB"/>
+        </DockPanel>
+    </Grid>
+</Window>

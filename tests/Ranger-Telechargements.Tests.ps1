@@ -263,3 +263,19 @@ Describe 'Undo-Rangement' {
         Format-ResumeAnnulation -Resultat $r | Should Be "2 fichier(s) remis en place.`r`n1 fichier(s) non remis, voir rangement.log."
     }
 }
+
+Describe 'Fenêtres' {
+    . "$PSScriptRoot\..\src\Rangeur-UI.ps1"
+    It 'charge la fenêtre principale avec ses contrôles' {
+        $w = Import-Fenetre -Chemin "$PSScriptRoot\..\src\Fenetre.xaml"
+        foreach ($n in 'TxtDossier','BtnChanger','ListeApercu','BtnRanger','BtnAnnuler','BtnCategories','TxtEtat') {
+            $w.FindName($n) | Should Not BeNullOrEmpty
+        }
+    }
+    It 'charge la fenêtre des catégories avec ses contrôles' {
+        $w = Import-Fenetre -Chemin "$PSScriptRoot\..\src\Categories.xaml"
+        foreach ($n in 'GrilleCategories','BtnAjouter','BtnSupprimer','BtnEnregistrer','BtnFermer') {
+            $w.FindName($n) | Should Not BeNullOrEmpty
+        }
+    }
+}
