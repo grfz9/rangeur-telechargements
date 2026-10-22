@@ -210,3 +210,56 @@ Describe 'Fichier d''annulation' {
         Get-Content -LiteralPath "$s\rangement-dernier.json" | Should Be 'ancien'
     }
 }
+
+Describe 'Undo-Rangement' {
+    It 'remet les fichiers en place et efface le fichier d''annulation' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\u1'
+        New-Item -ItemType File -Path "$s\a.pdf", "$s\b.jpg" | Out-Null
+        Invoke-Rangement -Source $s | Out-Null
+        $r = Undo-Rangement -Source $s
+        "$s\a.pdf" | Should Exist
+        "$s\b.jpg" | Should Exist
+        $r.Restaures | Should Be 2
+        Test-AnnulationPossible -Source $s | Should Be $false
+    }
+    It 'renomme si le nom d''origine est repris' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\u2'
+        Set-Content -LiteralPath "$s\a.pdf" -Value 'rangé'
+        Invoke-Rangement -Source $s | Out-Null
+        Set-Content -LiteralPath "$s\a.pdf" -Value 'nouveau'
+        Undo-Rangement -Source $s | Out-Null
+        Get-Content -LiteralPath "$s\a.pdf"     | Should Be 'nouveau'
+        Get-Content -LiteralPath "$s\a (2).pdf" | Should Be 'rangé'
+    }
+    It 'signale un fichier introuvable' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\u3'
+        New-Item -ItemType File -Path "$s\a.pdf", "$s\b.pdf" | Out-Null
+        Invoke-Rangement -Source $s | Out-Null
+        Move-Item -LiteralPath "$s\Documents\a.pdf" -Destination "$s\Documents\deplace.pdf"
+        $r = Undo-Rangement -Source $s
+        $r.Restaures | Should Be 1
+        $r.Erreurs.Count | Should Be 1
+    }
+    It 'continue après un fichier verrouillé' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\u4'
+        New-Item -ItemType File -Path "$s\a.pdf", "$s\b.pdf" | Out-Null
+        Invoke-Rangement -Source $s | Out-Null
+        $flux = [IO.File]::Open((Join-Path (Convert-Path $s) 'Documents\a.pdf'), 'Open', 'Read', 'None')
+        try { $r = Undo-Rangement -Source $s } finally { $flux.Close() }
+        "$s\b.pdf" | Should Exist
+        $r.Erreurs.Count | Should Be 1
+    }
+    It 'ne fait rien au deuxième appel' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\u5'
+        New-Item -ItemType File -Path "$s\a.pdf" | Out-Null
+        Invoke-Rangement -Source $s | Out-Null
+        Undo-Rangement -Source $s | Out-Null
+        $r = Undo-Rangement -Source $s
+        $r.RienAAnnuler | Should Be $true
+        Format-ResumeAnnulation -Resultat $r | Should Be 'Rien à annuler.'
+    }
+    It 'résume une annulation avec erreur' {
+        $r = [pscustomobject]@{ RienAAnnuler = $false; Restaures = 2; Erreurs = @('x') }
+        Format-ResumeAnnulation -Resultat $r | Should Be "2 fichier(s) remis en place.`r`n1 fichier(s) non remis, voir rangement.log."
+    }
+}

@@ -234,6 +234,71 @@ function Format-Resume {
     return $texte
 }
 
+function Test-AnnulationPossible {
+    param([string]$Source)
+
+    return Test-Path -LiteralPath (Join-Path $Source $NomAnnulation) -PathType Leaf
+}
+
+# Remet à leur place les fichiers du dernier rangement de Source, d'après
+# rangement-dernier.json, puis supprime ce fichier technique. Un fichier qui
+# n'est plus où le rangement l'avait mis est laissé tel quel et signalé.
+function Undo-Rangement {
+    param([string]$Source)
+
+    $racine = Convert-Path -LiteralPath $Source -ErrorAction Stop
+    $cheminAnnulation = Join-Path $racine $NomAnnulation
+    $journal = Join-Path $racine $NomJournal
+    $rien = [pscustomobject]@{ RienAAnnuler = $true; Restaures = 0; Erreurs = @() }
+
+    if (-not (Test-Path -LiteralPath $cheminAnnulation -PathType Leaf)) { return $rien }
+    try {
+        $annulation = Get-Content -LiteralPath $cheminAnnulation -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return $rien
+    }
+
+    $restaures = 0
+    $erreurs = New-Object System.Collections.Generic.List[string]
+
+    foreach ($deplacement in @($annulation.Deplacements)) {
+        $horodatage = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $nom = Split-Path -Leaf $deplacement.De
+        try {
+            if (-not (Test-Path -LiteralPath $deplacement.Vers -PathType Leaf)) {
+                throw "introuvable à l'emplacement $($deplacement.Vers)"
+            }
+            $destination = Get-CheminLibre -Dossier (Split-Path -Parent $deplacement.De) -Nom $nom
+            Move-Item -LiteralPath $deplacement.Vers -Destination $destination -ErrorAction Stop
+
+            $restaures++
+            $relatif = $deplacement.Vers.Substring($racine.Length).TrimStart('\')
+            Add-Content -LiteralPath $journal -Encoding UTF8 -Value "$horodatage | restauré | $relatif -> $(Split-Path -Leaf $destination)"
+        }
+        catch {
+            $erreurs.Add("$nom : $($_.Exception.Message)")
+            Add-Content -LiteralPath $journal -Encoding UTF8 -Value "$horodatage | erreur | $nom | $($_.Exception.Message)"
+        }
+    }
+
+    Remove-Item -LiteralPath $cheminAnnulation
+    return [pscustomobject]@{ RienAAnnuler = $false; Restaures = $restaures; Erreurs = $erreurs.ToArray() }
+}
+
+function Format-ResumeAnnulation {
+    param([pscustomobject]$Resultat)
+
+    if ($Resultat.RienAAnnuler) { return 'Rien à annuler.' }
+
+    $texte = "$($Resultat.Restaures) fichier(s) remis en place."
+    $erreurs = @($Resultat.Erreurs).Count
+    if ($erreurs -gt 0) {
+        $texte += "`r`n$erreurs fichier(s) non remis, voir $NomJournal."
+    }
+    return $texte
+}
+
 # Range Source et renvoie le message à afficher. Le script tourne dans une
 # fenêtre cachée : toute erreur fatale doit finir dans ce message.
 function Get-MessageFinal {
