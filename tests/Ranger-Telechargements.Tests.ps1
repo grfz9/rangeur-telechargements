@@ -200,8 +200,8 @@ Describe 'Fichier d''annulation' {
         Invoke-Rangement -Source $s | Out-Null
         $j = Get-Content -LiteralPath "$s\rangement-dernier.json" -Raw -Encoding UTF8 | ConvertFrom-Json
         @($j.Deplacements).Count | Should Be 1
-        $j.Deplacements[0].De   | Should Be (Join-Path (Convert-Path $s) 'a.pdf')
-        $j.Deplacements[0].Vers | Should Be (Join-Path (Convert-Path $s) 'Documents\a.pdf')
+        $j.Deplacements[0].De   | Should Be 'a.pdf'
+        $j.Deplacements[0].Vers | Should Be 'Documents\a.pdf'
     }
     It 'garde l''ancien fichier si rien n''a bougé' {
         $s = New-Item -ItemType Directory -Path 'TestDrive:\annul2'
@@ -277,5 +277,29 @@ Describe 'Fenêtres' {
         foreach ($n in 'GrilleCategories','BtnAjouter','BtnSupprimer','BtnEnregistrer','BtnFermer') {
             $w.FindName($n) | Should Not BeNullOrEmpty
         }
+    }
+}
+
+Describe 'Corrections de la relecture' {
+    It 'refuse un nom de dossier fait de points' {
+        { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = '..'; Extensions = 'pdf' }) } | Should Throw
+        { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = '.'; Extensions = 'pdf' }) } | Should Throw
+    }
+    It 'refuse un nom finissant par un point' {
+        { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'Images.'; Extensions = 'jpg' }) } | Should Throw
+    }
+    It 'refuse un nom réservé de Windows' {
+        { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'con'; Extensions = 'jpg' }) } | Should Throw
+        { ConvertTo-TableCategories -Lignes @([pscustomobject]@{ Dossier = 'LPT1'; Extensions = 'jpg' }) } | Should Throw
+    }
+    It 'annule encore après un déplacement du dossier entier' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\avant'
+        New-Item -ItemType File -Path "$s\a.pdf", "$s\b.jpg" | Out-Null
+        Invoke-Rangement -Source $s | Out-Null
+        Rename-Item -LiteralPath $s -NewName 'apres'
+        $r = Undo-Rangement -Source 'TestDrive:\apres'
+        $r.Restaures | Should Be 2
+        'TestDrive:\apres\a.pdf' | Should Exist
+        'TestDrive:\apres\b.jpg' | Should Exist
     }
 }

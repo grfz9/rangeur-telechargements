@@ -44,14 +44,24 @@ function Show-Categories {
     }
     $grille.ItemsSource = $lignes
 
+    # La collection ne peut pas changer pendant qu'une cellule est en cours
+    # d'édition : on valide d'abord la saisie.
     $fenetre.FindName('BtnAjouter').Add_Click({
-        $ligne = New-Object LigneCategorie
-        $lignes.Add($ligne)
-        $grille.SelectedItem = $ligne
-        $grille.ScrollIntoView($ligne)
+        try {
+            $grille.CommitEdit([System.Windows.Controls.DataGridEditingUnit]::Row, $true) | Out-Null
+            $ligne = New-Object LigneCategorie
+            $lignes.Add($ligne)
+            $grille.SelectedItem = $ligne
+            $grille.ScrollIntoView($ligne)
+        }
+        catch { Show-Erreur $_.Exception.Message }
     })
     $fenetre.FindName('BtnSupprimer').Add_Click({
-        if ($grille.SelectedItem -is [LigneCategorie]) { $lignes.Remove($grille.SelectedItem) | Out-Null }
+        try {
+            $grille.CommitEdit([System.Windows.Controls.DataGridEditingUnit]::Row, $true) | Out-Null
+            if ($grille.SelectedItem -is [LigneCategorie]) { $lignes.Remove($grille.SelectedItem) | Out-Null }
+        }
+        catch { Show-Erreur $_.Exception.Message }
     })
     $fenetre.FindName('BtnEnregistrer').Add_Click({
         $grille.CommitEdit([System.Windows.Controls.DataGridEditingUnit]::Row, $true) | Out-Null

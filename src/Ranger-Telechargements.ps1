@@ -21,6 +21,9 @@ $NomJournal = 'rangement.log'
 # Liste des déplacements du dernier rangement, lue par Undo-Rangement.
 $NomAnnulation = 'rangement-dernier.json'
 
+# Noms de périphériques que Windows refuse comme nom de dossier.
+$NomsReserves = @('CON', 'PRN', 'AUX', 'NUL') + (1..9 | ForEach-Object { "COM$_"; "LPT$_" })
+
 function Copy-Categories {
     param([System.Collections.IDictionary]$Table)
 
@@ -44,6 +47,10 @@ function ConvertTo-TableCategories {
         $nom = "$($ligne.Dossier)".Trim()
         if (-not $nom) { throw 'Un nom de dossier est vide.' }
         if ($nom.IndexOfAny($interdits) -ge 0) { throw "Le nom de dossier « $nom » contient un caractère interdit." }
+        # Windows retire les points finaux et « . » ou « .. » désignent un
+        # autre dossier : de tels noms feraient sortir les fichiers du dossier.
+        if ($nom.EndsWith('.')) { throw "Le nom de dossier « $nom » ne peut pas finir par un point." }
+        if ($NomsReserves -contains $nom.Split('.')[0]) { throw "« $nom » est un nom réservé par Windows." }
         if ($nom -eq 'Autres') { throw '« Autres » est réservé aux extensions inconnues.' }
         if ($dossiers -contains $nom) { throw "Le dossier « $nom » apparaît deux fois." }
         $dossiers += $nom
@@ -179,8 +186,10 @@ function Invoke-Rangement {
             Move-Item -LiteralPath $entree.Chemin -Destination $destination -ErrorAction Stop
 
             $comptes[$categorie] = 1 + [int]$comptes[$categorie]
-            $deplacements.Add([pscustomobject]@{ De = $entree.Chemin; Vers = $destination })
             $nomFinal = Split-Path -Leaf $destination
+            # Chemins relatifs au dossier rangé : l'annulation marche encore si
+            # le dossier entier a été déplacé ou renommé entre-temps.
+            $deplacements.Add([pscustomobject]@{ De = $entree.Nom; Vers = "$categorie\$nomFinal" })
             Add-Content -LiteralPath $Journal -Encoding UTF8 -Value "$horodatage | déplacé | $($entree.Nom) -> $categorie\$nomFinal"
         }
         catch {
@@ -264,17 +273,17 @@ function Undo-Rangement {
 
     foreach ($deplacement in @($annulation.Deplacements)) {
         $horodatage = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $nom = Split-Path -Leaf $deplacement.De
+        $nom = $deplacement.De
+        $source = Join-Path $racine $deplacement.Vers
         try {
-            if (-not (Test-Path -LiteralPath $deplacement.Vers -PathType Leaf)) {
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
                 throw "introuvable à l'emplacement $($deplacement.Vers)"
             }
-            $destination = Get-CheminLibre -Dossier (Split-Path -Parent $deplacement.De) -Nom $nom
-            Move-Item -LiteralPath $deplacement.Vers -Destination $destination -ErrorAction Stop
+            $destination = Get-CheminLibre -Dossier $racine -Nom $nom
+            Move-Item -LiteralPath $source -Destination $destination -ErrorAction Stop
 
             $restaures++
-            $relatif = $deplacement.Vers.Substring($racine.Length).TrimStart('\')
-            Add-Content -LiteralPath $journal -Encoding UTF8 -Value "$horodatage | restauré | $relatif -> $(Split-Path -Leaf $destination)"
+            Add-Content -LiteralPath $journal -Encoding UTF8 -Value "$horodatage | restauré | $($deplacement.Vers) -> $(Split-Path -Leaf $destination)"
         }
         catch {
             $erreurs.Add("$nom : $($_.Exception.Message)")
