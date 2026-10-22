@@ -30,3 +30,21 @@ Describe 'Test-FichierAIgnorer' {
         Test-FichierAIgnorer -Fichier $f | Should Be $false
     }
 }
+
+Describe 'Get-CheminLibre' {
+    It 'garde le nom s''il est libre' {
+        Get-CheminLibre -Dossier 'TestDrive:\' -Nom 'a.pdf' | Should Be (Join-Path 'TestDrive:\' 'a.pdf')
+    }
+    It 'ajoute (2) en cas de conflit' {
+        New-Item -ItemType File -Path 'TestDrive:\b.pdf' | Out-Null
+        Get-CheminLibre -Dossier 'TestDrive:\' -Nom 'b.pdf' | Should Be (Join-Path 'TestDrive:\' 'b (2).pdf')
+    }
+    It 'passe à (3) si (2) est pris' {
+        New-Item -ItemType File -Path 'TestDrive:\c.pdf', 'TestDrive:\c (2).pdf' | Out-Null
+        Get-CheminLibre -Dossier 'TestDrive:\' -Nom 'c.pdf' | Should Be (Join-Path 'TestDrive:\' 'c (3).pdf')
+    }
+    It 'gère un fichier sans extension' {
+        New-Item -ItemType File -Path 'TestDrive:\LISEZMOI' | Out-Null
+        Get-CheminLibre -Dossier 'TestDrive:\' -Nom 'LISEZMOI' | Should Be (Join-Path 'TestDrive:\' 'LISEZMOI (2)')
+    }
+}

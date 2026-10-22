@@ -38,5 +38,23 @@ function Test-FichierAIgnorer {
     return $ExtensionsEnCours -contains $Fichier.Extension.TrimStart('.').ToLowerInvariant()
 }
 
+# Renvoie Dossier\Nom s'il est libre, sinon Dossier\base (n).ext avec le plus
+# petit n >= 2 libre. Ne crée aucun fichier.
+function Get-CheminLibre {
+    param([string]$Dossier, [string]$Nom)
+
+    $chemin = Join-Path $Dossier $Nom
+    if (-not (Test-Path -LiteralPath $chemin)) { return $chemin }
+
+    $base = [IO.Path]::GetFileNameWithoutExtension($Nom)
+    $ext = [IO.Path]::GetExtension($Nom)
+    $n = 2
+    do {
+        $chemin = Join-Path $Dossier "$base ($n)$ext"
+        $n++
+    } while (Test-Path -LiteralPath $chemin)
+    return $chemin
+}
+
 if ($MyInvocation.InvocationName -ne '.') {
 }
