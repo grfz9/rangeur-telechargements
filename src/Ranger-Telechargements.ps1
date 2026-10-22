@@ -35,7 +35,14 @@ function Test-FichierAIgnorer {
 
     if ($Fichier.Name -eq $NomJournal) { return $true }
     if ($Fichier.Attributes -band ([IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System)) { return $true }
-    return $ExtensionsEnCours -contains $Fichier.Extension.TrimStart('.').ToLowerInvariant()
+    if ($ExtensionsEnCours -contains $Fichier.Extension.TrimStart('.').ToLowerInvariant()) { return $true }
+
+    # Firefox crée un fichier vide au nom final à côté du .part pendant le
+    # téléchargement : il ne doit pas être rangé avant la fin.
+    foreach ($ext in $ExtensionsEnCours) {
+        if (Test-Path -LiteralPath "$($Fichier.FullName).$ext") { return $true }
+    }
+    return $false
 }
 
 # Renvoie Dossier\Nom s'il est libre, sinon Dossier\base (n).ext avec le plus
@@ -62,7 +69,7 @@ function Get-CheminLibre {
 function Invoke-Rangement {
     param([string]$Source, [string]$Journal)
 
-    $racine = Convert-Path -LiteralPath $Source
+    $racine = Convert-Path -LiteralPath $Source -ErrorAction Stop
     if (-not $Journal) { $Journal = Join-Path $racine $NomJournal }
 
     $comptes = @{}
@@ -126,10 +133,23 @@ function Format-Resume {
     return $texte
 }
 
+# Range Source et renvoie le message à afficher. Le script tourne dans une
+# fenêtre cachée : toute erreur fatale doit finir dans ce message.
+function Get-MessageFinal {
+    param([string]$Source)
+
+    try {
+        return Format-Resume -Resultat (Invoke-Rangement -Source $Source)
+    }
+    catch {
+        return "Le rangement a échoué : $($_.Exception.Message)"
+    }
+}
+
 if ($MyInvocation.InvocationName -ne '.') {
     $telechargements = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
-    $resultat = Invoke-Rangement -Source $telechargements
+    $message = Get-MessageFinal -Source $telechargements
 
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.MessageBox]::Show((Format-Resume -Resultat $resultat), 'Rangeur de Téléchargements') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show($message, 'Rangeur de Téléchargements') | Out-Null
 }

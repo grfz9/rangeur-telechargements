@@ -25,6 +25,11 @@ Describe 'Test-FichierAIgnorer' {
         $f = New-Item -ItemType File -Path 'TestDrive:\rangement.log'
         Test-FichierAIgnorer -Fichier $f | Should Be $true
     }
+    It 'ignore le fichier vide créé par Firefox à côté du .part' {
+        $f = New-Item -ItemType File -Path 'TestDrive:\facture.pdf'
+        New-Item -ItemType File -Path 'TestDrive:\facture.pdf.part' | Out-Null
+        Test-FichierAIgnorer -Fichier $f | Should Be $true
+    }
     It 'garde un fichier normal' {
         $f = New-Item -ItemType File -Path 'TestDrive:\note.txt'
         Test-FichierAIgnorer -Fichier $f | Should Be $false
@@ -106,6 +111,17 @@ Describe 'Invoke-Rangement' {
         $r = Invoke-Rangement -Source $s
         $r.Comptes.Count | Should Be 0
         $r.Erreurs.Count | Should Be 0
+    }
+}
+
+Describe 'Get-MessageFinal' {
+    It 'renvoie le résumé après un rangement' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\final'
+        New-Item -ItemType File -Path "$s\a.pdf" | Out-Null
+        Get-MessageFinal -Source $s | Should Be '1 fichier(s) rangé(s) : 1 Documents'
+    }
+    It 'renvoie un message d''erreur si le dossier est introuvable' {
+        Get-MessageFinal -Source 'TestDrive:\absent' | Should Match '^Le rangement a échoué : '
     }
 }
 
