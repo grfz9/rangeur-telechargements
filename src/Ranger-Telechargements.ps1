@@ -18,6 +18,8 @@ $CategoriesParDefaut = [ordered]@{
 $ExtensionsEnCours = @('crdownload', 'part', 'tmp', 'partial', 'download')
 
 $NomJournal = 'rangement.log'
+# Liste des déplacements du dernier rangement, lue par Undo-Rangement.
+$NomAnnulation = 'rangement-dernier.json'
 
 function Copy-Categories {
     param([System.Collections.IDictionary]$Table)
@@ -105,7 +107,7 @@ function Get-Categorie {
 function Test-FichierAIgnorer {
     param([System.IO.FileInfo]$Fichier)
 
-    if ($Fichier.Name -eq $NomJournal) { return $true }
+    if ($Fichier.Name -eq $NomJournal -or $Fichier.Name -eq $NomAnnulation) { return $true }
     if ($Fichier.Attributes -band ([IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System)) { return $true }
     if ($ExtensionsEnCours -contains $Fichier.Extension.TrimStart('.').ToLowerInvariant()) { return $true }
 
@@ -135,6 +137,23 @@ function Get-CheminLibre {
     return $chemin
 }
 
+# Liste les fichiers de la racine de Source qui seraient rangés, avec leur
+# catégorie, sans rien déplacer. Invoke-Rangement suit exactement ce plan.
+function Get-PlanRangement {
+    param([string]$Source)
+
+    $racine = Convert-Path -LiteralPath $Source -ErrorAction Stop
+    $plan = foreach ($fichier in Get-ChildItem -LiteralPath $racine -File -Force) {
+        if (Test-FichierAIgnorer -Fichier $fichier) { continue }
+        [pscustomobject]@{
+            Nom       = $fichier.Name
+            Chemin    = $fichier.FullName
+            Categorie = Get-Categorie -Extension $fichier.Extension
+        }
+    }
+    return @($plan)
+}
+
 # Déplace chaque fichier de la racine de Source dans son dossier de catégorie
 # et journalise chaque action. Les sous-dossiers ne sont pas parcourus.
 # Renvoie le nombre de fichiers rangés par catégorie et la liste des erreurs.
@@ -146,28 +165,38 @@ function Invoke-Rangement {
 
     $comptes = @{}
     $erreurs = New-Object System.Collections.Generic.List[string]
+    $deplacements = New-Object System.Collections.Generic.List[object]
 
-    foreach ($fichier in Get-ChildItem -LiteralPath $racine -File -Force) {
-        if (Test-FichierAIgnorer -Fichier $fichier) { continue }
-
-        $categorie = Get-Categorie -Extension $fichier.Extension
+    foreach ($entree in Get-PlanRangement -Source $racine) {
+        $categorie = $entree.Categorie
         $horodatage = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         try {
             $dossier = Join-Path $racine $categorie
             if (-not (Test-Path -LiteralPath $dossier -PathType Container)) {
                 New-Item -ItemType Directory -Path $dossier -ErrorAction Stop | Out-Null
             }
-            $destination = Get-CheminLibre -Dossier $dossier -Nom $fichier.Name
-            Move-Item -LiteralPath $fichier.FullName -Destination $destination -ErrorAction Stop
+            $destination = Get-CheminLibre -Dossier $dossier -Nom $entree.Nom
+            Move-Item -LiteralPath $entree.Chemin -Destination $destination -ErrorAction Stop
 
             $comptes[$categorie] = 1 + [int]$comptes[$categorie]
+            $deplacements.Add([pscustomobject]@{ De = $entree.Chemin; Vers = $destination })
             $nomFinal = Split-Path -Leaf $destination
-            Add-Content -LiteralPath $Journal -Encoding UTF8 -Value "$horodatage | déplacé | $($fichier.Name) -> $categorie\$nomFinal"
+            Add-Content -LiteralPath $Journal -Encoding UTF8 -Value "$horodatage | déplacé | $($entree.Nom) -> $categorie\$nomFinal"
         }
         catch {
-            $erreurs.Add("$($fichier.Name) : $($_.Exception.Message)")
-            Add-Content -LiteralPath $Journal -Encoding UTF8 -Value "$horodatage | erreur | $($fichier.Name) | $($_.Exception.Message)"
+            $erreurs.Add("$($entree.Nom) : $($_.Exception.Message)")
+            Add-Content -LiteralPath $Journal -Encoding UTF8 -Value "$horodatage | erreur | $($entree.Nom) | $($_.Exception.Message)"
         }
+    }
+
+    # Un rangement qui n'a rien déplacé garde l'annulation précédente.
+    if ($deplacements.Count -gt 0) {
+        $annulation = [pscustomobject]@{
+            Date         = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            Deplacements = $deplacements.ToArray()
+        }
+        $annulation | ConvertTo-Json -Depth 3 |
+            Set-Content -LiteralPath (Join-Path $racine $NomAnnulation) -Encoding UTF8
     }
 
     return [pscustomobject]@{ Comptes = $comptes; Erreurs = $erreurs.ToArray() }

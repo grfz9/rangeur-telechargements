@@ -176,3 +176,37 @@ Describe 'Catégories' {
         (Read-Categories -Chemin 'TestDrive:\c3.json')['Vidéos'] -join ',' | Should Be 'mp4'
     }
 }
+
+Describe 'Get-PlanRangement' {
+    It 'liste les fichiers et catégories sans rien déplacer' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\plan'
+        New-Item -ItemType File -Path "$s\a.pdf", "$s\b.crdownload", "$s\rangement-dernier.json" | Out-Null
+        $p = @(Get-PlanRangement -Source $s)
+        $p.Count | Should Be 1
+        $p[0].Nom | Should Be 'a.pdf'
+        $p[0].Categorie | Should Be 'Documents'
+        "$s\a.pdf" | Should Exist
+    }
+    It 'renvoie un tableau vide sur un dossier vide' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\planvide'
+        @(Get-PlanRangement -Source $s).Count | Should Be 0
+    }
+}
+
+Describe 'Fichier d''annulation' {
+    It 'enregistre chaque déplacement' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\annul'
+        New-Item -ItemType File -Path "$s\a.pdf" | Out-Null
+        Invoke-Rangement -Source $s | Out-Null
+        $j = Get-Content -LiteralPath "$s\rangement-dernier.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+        @($j.Deplacements).Count | Should Be 1
+        $j.Deplacements[0].De   | Should Be (Join-Path (Convert-Path $s) 'a.pdf')
+        $j.Deplacements[0].Vers | Should Be (Join-Path (Convert-Path $s) 'Documents\a.pdf')
+    }
+    It 'garde l''ancien fichier si rien n''a bougé' {
+        $s = New-Item -ItemType Directory -Path 'TestDrive:\annul2'
+        Set-Content -LiteralPath "$s\rangement-dernier.json" -Value 'ancien'
+        Invoke-Rangement -Source $s | Out-Null
+        Get-Content -LiteralPath "$s\rangement-dernier.json" | Should Be 'ancien'
+    }
+}
